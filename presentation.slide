@@ -1,0 +1,431 @@
+Go 1.10 Release Party
+Golang Moscow
+24 Feb 2018
+
+Alexey Palazhchenko
+
+* License and Materials
+
+This presentation is licensed under the [[https://creativecommons.org/licenses/by-sa/4.0/][Creative Commons Attribution-ShareAlike 4.0 International]] licence.
+
+The materials for this presentation are available on GitHub:
+
+.link https://github.com/AlekSi/go-1.10-release-party
+
+You are encouraged to remix, transform, or build upon the material, providing you distribute your contributions under the same license.
+
+This presentation is based on the one made by Florin Pățan. See GitHub link above for details.
+
+
+* Go 1.10
+
+* Go 1.10
+
+Go 1.10 is released!
+
+.image img/party-gopher-dance.gif _ 150
+
+.link https://blog.golang.org/go1.10 Go 1.10 Announcement
+
+Go 1.10 is the *11th*release* in the Go 1 series.
+It follows from the previous version, Go 1.9, [[https://goo.gl/BUVc6Y][released on the 24th of August, 2016]]
+
+#You can view the full release notes here:
+#.link http://golang.org/doc/go1.10 Go 1.10 Release Notes
+You can view the release notes here:
+.link http://tip.golang.org/doc/go1.10 Go 1.10 Release Notes
+
+* What's changed?
+
+So, what's happened in the last six months?
+
+- Language Changes
+- Ports & OS Support
+- Performance
+- Compiler & Tools
+- Runtime
+- CGO support
+- Standard Library
+
+* Language Changes
+
+* Language Changes
+
+There are no significant changes to the language specification.
+
+However, there are a couple of minor changes.
+
+* Language Changes
+
+First, the compilers have been updated to allow the index expression *x[1.0*<<*s]* where *s* is an *untyped*constant*
+
+    package main
+
+    func main() {
+        const s = 10
+        a := make([]byte, 1.0<<s) // valid
+        _ = a[1.0<<s]             // in Go 1.9 accepted by go/types, not accepted by cmd/compile
+    }
+
+In Go 1.9:
+
+ prog.go:6:11: invalid operation: 1 << s (shift of type float64)
+
+In Go 1.10
+
+ panic: runtime error: index out of range
+
+* Language Changes
+
+Method expressions such as *struct{io.Reader}.Read*, that *the*compilers*already*accepted*, are now permitted by the language grammar
+
+    package main
+    import "io"
+    type MyType struct { io.Reader }
+    func main() {
+        m := MyType{}
+        dst := make([]byte, 10)
+        l, err := struct{io.Reader}.Read(m, dst)
+        _, _, _ = l, err, dst
+    }
+
+Go 1.10 output:
+
+    go.struct { io.Reader }.Read: call to external function
+    main.main: relocation target go.struct { io.Reader }.Read not defined
+    main.main: undefined: "go.struct { io.Reader }.Read"
+
+We'll have to wait for Go 1.11, [[https://github.com/golang/go/issues/22444]] to get this fixed AND working.
+
+
+* Ports & OS Support
+
+* Ports & OS Support
+
+No new ports are present.
+
+- Go 1.10 now requires FreeBSD 10.3 or later
+- Go needs the unreleased NetBSD 8, only GOARCH *amd64* and *386* are working, *arm* port is still broken
+
+Go 1.10 is the last release that will run on:
+
+- OpenBSD 6.0. Go 1.11 will require OpenBSD 6.2
+- OS X 10.8 Mountain Lion or OS X 10.9 Mavericks. Go 1.11 will require OS X 10.10 Yosemite or later
+- Windows XP or Windows Vista. Go 1.11 will require Windows 7 or later
+
+* Ports & OS Support
+
+On 32-bit MIPS systems, the new *GOMIPS* environment variable can be either *hardfloat* (default) or *softfloat* and selects whether to use hardware instructions or software emulation for floating-point computations.
+
+As you'll almost certainly be cross compiling for MIPS from a larger machine this is how you'd use softfloat:
+
+    % GOARCH=mips GOOS=linux GOMIPS=softfloat go build your/package/here
+
+* Performance
+
+* Performance
+
+As always, the changes are so general and varied that precise statements about performance are difficult to make.
+
+Most programs should hopefully run a bit faster, due to speedups in the garbage collector, optimizations in the compiler and standard library.
+
+However no official or unofficial comparisons are out for now so it's hard to talk about performance for this release just yet.
+
+
+* Compiler & Tools
+
+* Compiler & Tools - The Great Caching
+
+*go*build* now maintains a cache of recently built packages, separate from the installed packages in *$GOROOT/pkg* or *$GOPATH/pkg*.
+
+This means you *do*not*need* to run *go*build*-i* or *go*test*-i* any more, the go tool automatically caches previous builds results.
+
+Furthermore, *go*build* command now detects out-of-date packages purely based on the content of source files, specified build flags, and metadata stored in the compiled packages. Modification times are no longer consulted or relevant.
+
+* Compiler & Tools - The Great Caching
+
+The caching change does not apply only to *go*build* but also to *go*test*.
+
+To benefit from the caching of tests there are *a*few*conditions* that *must*be*met*:
+
+- the results are successful
+- the test executable and command line match a previous run
+- the files and environment variables used by that run have not changed
+- the go test command received a list of packages to test, *go*test*./...* for example
+- the test command line uses a subset of the test flags, *-cpu*, *-list*, *-parallel*, *-run*, *-short*, and *-v*
+
+To *bypass*the*test*cache*, you need to run with *-count=1* parameter.
+
+The output of the tests will also be modified due to caching. The run time of the tests will notify that the cached output is used, by displaying *(cached)* instead of the original test run time.
+
+* Compiler & Tools - The Great Caching
+
+E.g. fresh copy of Terraform on a system without any installed package or cache: *
+
+- first *go*test*./...* finished in about 3 minutes
+
+    [...]
+    FAIL    github.com/hashicorp/terraform/config/module    6.173s
+    ok      github.com/hashicorp/terraform/dag      2.712s
+    [...]
+
+- second *go*test*./...* finished in less than 40 seconds
+
+    [...]
+    FAIL    github.com/hashicorp/terraform/config/module    7.060s
+    ok      github.com/hashicorp/terraform/dag      (cached)
+    [...]
+
+*** compiled on Windows 10 with a i7 6700HQ (8 cores) and 32GB RAM
+
+* Compiler & Tools - go test
+
+Caching is not the only new functionality gained by *go*test* in this release.
+
+Select *go*vet* checks will now run before your tests, to ensure that common mistakes do not make it in your code before tests are running.
+
+Another, long awaited change, is the ability of *-coverpkg* to finally compute the coverage of multiple packages:
+
+ go test -coverpkg=all -coverprofile cover.out ./...
+
+The *-failfast* flag now will stop testing immediately on the first failure, with the caveat that parallel tests are still allowed to continue until they finish.
+
+* Compiler & Tools
+
+Windows now supports *c-shared*archives* (aka Windows gets DLL support!)
+
+OSX now has support for Go plugins. Windows still doesn't, see issue [[https://github.com/golang/go/issues/19282][#19282]].
+
+* Compiler & Tools
+
+The *go*build* flags: *-asmflags*, *-gcflags*, *-gccgoflags*, and *-ldflags* options now apply by default only to the packages listed directly on the command line.
+
+For example,
+
+ go build -gcflags=-m mypkg
+
+passes the compiler the *-m* flag when building *mypkg* but *not*its*dependencies*.
+
+* Compiler & Tools - gofmt
+
+Three index slice expressions containing complex expressions are now always formatted as
+
+ slice[start+1 : stop : capacity]
+
+Single-method interface literals written on a single line, which are sometimes used in type assertions, are no longer split onto multiple lines.
+
+    if c, ok := v.(interface {
+        Close() error
+    }); ok {
+    }
+
+can become:
+
+    if c, ok := v.(interface{ Close() error }); ok {
+    }
+
+* Compiler & Tools - gofmt
+
+If a composite literal would include a comment and only comments, then the comment(s) will now be indented.
+
+    var _ = []T{/* lone comment */}
+
+    var _ = []T{
+    /* lone comment */
+    }
+
+will become:
+
+    var _ = []T{ /* lone comment */ }
+
+    var _ = []T{
+        /* lone comment */
+    }
+
+*Warning*: The *official*stance* is: *do*not* use *gofmt* in your CI or risk errors due to subtle changes such as these, as *gofmt*is*not*covered*by*the*same*guarantees*as*Go*itself*.
+
+* Compiler & Tools - go fix
+
+*go*fix* now replaces imports from *golang.org/x/net/context* with context which will help you migrate your code to a Go 1.9+ compatible code by running:
+
+ go tool fix -r context your/package
+
+* Compiler & Tools
+
+Most important changes are under *amd64* platform with *359*new*instructions* including the full instruction set for:
+
+- AVX
+- AVX2
+- BMI
+- BMI2
+- F16C
+- FMA3
+- SSE2
+- SSE3
+- SSSE3
+- SSE4.1 & SSE4.2
+
+
+* Runtime
+
+* Runtime
+
+If before, in nested calls, *UnlockOSThread* would need to be called only once to unlock the thread, now it will need to be called as many times as *LockOSThread* was called.
+
+You may have noticed the *<autogenerated>* frame (line) in the stack traces before.
+This is now hidden, unless a panic or other issue happens in it.
+This also means that if your code would call *runtime.Caller* with a certain number of skip frames, then this change will be a "breaking change" in its behaviour as the *<autogenerated>* frames will not be counted there either.
+
+* Runtime
+
+Go 1.10 also introduces *soft* and *hard*goals* (limits) for *garbage*collection*.
+
+The soft limit is the current value of the GOGC while the hard limit is 10% higher than the soft limit.
+
+Heavy GC reliant applications (so far only benchmarks) shows that there’s an increase in the heap size of the application.
+
+These limits are not currently configurable, see [[https://golang.org/cl/59970]] for the discussion on it.
+
+* CGO support
+
+* CGO support
+
+C typedefs such as *typedef*X*Y* now are treated as Go aliases. You'll be able to use *C.X* and *C.Y* interchangeably in Go now, as if they would be Go aliases, *type*X*=*Y*.
+
+You can now pass Go strings directly to C. This is done by declaring a C function in a Go file with a parameter type of the special type name *_GoString_*. To access the string length, you’ll need to call *size_t* *_GoStringLen(_GoString_*s)* an in order to get the pointer to the string contents, you’ll need use *const*char* ***_GoStringPtr(_GoString_*s)*.
+
+Some C types that were previously mapped to a pointer type in Go are now mapped to *uintptr* type.
+A couple of these types are *CFTypeRef* in Darwin's CoreFoundation framework and the *jobject* in Java’s JNI interface.
+You’ll need to initialize the values for the affected types with *0* instead of *nil*.
+This is a breaking change but thankfully you can fix this quickly and automatically by running
+
+ go tool fix -r cftype your/package or go tool fix -r jni your/package
+
+
+* Standard Library
+
+* Standard Library
+
+- bufio - new *Reader.Size* and *Writer.Size* methods report the Reader's or Writer's underlying buffer size
+- bytes - the *Fields*, *FieldsFunc*, *Split*, and *SplitAfter* each already returned slices pointing into the same underlying array as its input. Go 1.10 changes each of the returned subslices to have capacity equal to its length, so that appending to a subslice will not overwrite adjacent data in the original input. This is also a "breaking change" in the behavior of these functions and you might need to update your code.
+- encoding/json - the *Decoder* adds a new method *DisallowUnknownFields* that causes it to report inputs with unknown JSON fields as a decoding error. The default behavior has always been to discard unknown fields
+- encoding/json - *Unmarshal* can no longer decode into fields inside embedded pointers to unexported struct types, because it cannot initialize the unexported embedded pointer to point at fresh storage. *Unmarshal* now returns an error in this case. This means you may need to update your code or a "breaking change" will happen, which could be hidden if the code is not properly handling errors
+
+* Standard library
+
+- math/rand - the new *math/rand.Shuffle* function and corresponding *math/rand.***Rand.Shuffle* method shuffle an input sequence ***
+
+    func ExampleShuffle() {
+        rand.Seed(time.Now().UnixNano())
+        numbers := []byte("12345")
+
+        rand.Shuffle(len(numbers), func(i, j int) {
+            numbers[i], numbers[j] = numbers[j], numbers[i]
+        })
+
+        for i := range numbers {
+            fmt.Printf("%c ", numbers[i])
+        }
+
+        // Output:
+        // 3 4 1 5 2
+    }
+
+*** *Warning*: remember to call *rand.Seed()* or the order will be *predictable*!
+
+* Standard Library
+
+- math - the new functions *Round* and *RoundToEven* round their arguments to the nearest floating-point integer; *Round* rounds a half-integer to its larger integer neighbor (away from zero) while *RoundToEven* rounds a half-integer to its even integer neighbor
+- net - *TCPListener* and *UnixListener* now implement -syscall.Conn-, to allow setting options on the underlying file descriptor using *syscall.RawConn.Control*
+- net - the *Conn* implementations returned by *Pipe* now support setting read and write deadlines
+- net - the *IPConn.ReadMsgIP*, *IPConn.WriteMsgIP*, *UDPConn.ReadMsgUDP*, and *UDPConn.WriteMsgUDP*, methods are now implemented on *Windows*
+
+* Standard Library
+
+- net - the *Conn* and *Listener* implementations in this package now guarantee that when *Close* returns, the underlying file descriptor has been closed.
+
+In earlier releases, if the *Close* stopped pending I/O in other goroutines, the closing of the file descriptor could happen in one of those goroutines shortly after *Close* returned
+
+This is an important change as it now guarantees that you can do
+
+    net.Listen(...)
+    Close()
+    net.Listen()
+
+and safely be able to acquire new connections. Before, in 1.9 or older, depending on timing and your OS, this could throw an error due to the port being still in use.
+
+* Standard Library
+
+- net/http - on the client side, an *HTTP*proxy*, most commonly configured by *ProxyFromEnvironment*, can now be specified as an *https://*URL*, meaning that the client connects to the proxy over HTTPS before issuing a standard, proxied HTTP request. Previously, HTTP proxy URLs were required to begin with *http://* or *socks5://*
+- net/http - on the server side, *FileServer* and its single-file equivalent *ServeFile* now apply *If-Range* checks to HEAD requests. *FileServer* also now reports directory read failures to the *Server's*ErrorLog*
+- net/http - the content-serving handlers also now *omit* the *Content-Type* header when serving zero-length content
+- net/http - *ResponseWriter's* *WriteHeader* method now panics if passed an invalid (non-3-digit) status code
+- net/http - *Redirect* now sets the *Content-Type* header before writing its HTTP response
+
+* Standard Library
+
+- net/url - *ResolveReference* now preserves multiple leading slashes in the target URL. Previously it rewrote multiple leading slashes to a single slash, which resulted in the *http.Client* following certain redirects incorrectly
+- os - *File* adds new methods *SetDeadline*, *SetReadDeadline*, and *SetWriteDeadline* that allow setting I/O deadlines when the underlying file descriptor supports non-blocking I/O operations. The definition of these methods matches those in *net.Conn*
+- os - also matching *net.Conn*, *File's* *Close* method now guarantee that when *Close* returns, the underlying file descriptor has been closed
+- unicode - the unicode package and associated support throughout the system has been upgraded from version 9.0 to *Unicode*10.0*, which adds 8,518 new characters, including four new scripts, one new property, a Bitcoin currency symbol, and 56 new emoji 🤯
+
+* Standard library
+
+- strings - a new type *Builder* is a replacement for *bytes.Buffer* for the use case of accumulating text into a string result. The *Builder's*API* is a restricted subset of *bytes.Buffer's* that allows it to safely avoid making a duplicate copy of the data during the String method
+
+    func ExampleBuilder() {
+    	var b strings.Builder
+    	for i := 3; i >= 1; i-- {
+    		fmt.Fprintf(&b, "%d...", i)
+    	}
+    	b.WriteString("ignition")
+    	fmt.Println(b.String())
+
+    	// Output: 3...2...1...ignition
+    }
+
+* Standard library
+
+- database/sql/driver - drivers that want to construct a sql.DB for their clients can now implement the Connector interface and call the new sql.OpenDB function, instead of needing to encode all configuration into a string passed to sql.Open
+- database/sql/driver - drivers that implement ExecerContext no longer need to implement Execer; similarly, drivers that implement QueryerContext no longer need to implement Queryer
+- database/sql/driver - to allow drivers to better isolate different clients using a cached driver connection in succession, if a Conn implements the new SessionResetter interface, database/sql will now call ResetSession before reusing the Conn for a new client
+
+
+* Community
+
+* Community - Upcoming Conferences
+
+- GopherCon India 2018, Pune, India [[http://www.gophercon.in]]
+- GopherCon Russia 2018, Moscow, Russia, [[http://gophercon-russia.ru]]
+- GothamGo 2018, New York, USA, [[http://gothamgo.com]]
+- GopherCon SG 2018, Singapore, [[https://2018.gophercon.sg]]
+- GopherCon Europe, Reykjavik, Iceland, [[https://gophercon.is]]
+- GopherCon Denver 2018, Denver, CO, [[http://gophercon.com]]
+- GopherCon Brasil 2018, Florianópolis, Brazil, [[https://2018.gopherconbr.org/en]]
+- GoLab 2018, Florence, Italy, [[http://golab.io]]
+- dotGo 2019, Paris, France, [[https://2019.dotgo.eu]]
+
+* GopherCon Russia
+
+.image img/gophercon.png
+
+* Community - Resources
+
+List of all Go conferences:
+.link ttps://github.com/golang/go/wiki/Conferences
+
+List of all Go meetups:
+.link https://go-meetups.appspot.com
+
+Resources for new speakers:
+.link https://github.com/golang/go/wiki/NewSpeakers
+
+
+
+* Conclusion
+
+.image img/party-gopher-dance.gif _ 150
+
+Upgrade to Go 1.10, now!
+
+It's literally the best version of Go, _so_far_.
