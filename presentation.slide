@@ -80,14 +80,19 @@ In Go 1.10
 Method expressions such as *struct{io.Reader}.Read*, that *the*compilers*already*accepted*, are now permitted by the language grammar
 
     package main
+
     import "io"
-    type MyType struct { io.Reader }
+
+    type MyType struct{ io.Reader }
+
     func main() {
         m := MyType{}
         dst := make([]byte, 10)
-        l, err := struct{io.Reader}.Read(m, dst)
+        l, err := struct{ io.Reader }.Read(m, dst)
         _, _, _ = l, err, dst
     }
+
+* Language Changes
 
 Go 1.10 output:
 
@@ -336,7 +341,7 @@ This is a breaking change but thankfully you can fix this quickly and automatica
 * Standard Library
 
 - math - the new functions *Round* and *RoundToEven* round their arguments to the nearest floating-point integer; *Round* rounds a half-integer to its larger integer neighbor (away from zero) while *RoundToEven* rounds a half-integer to its even integer neighbor
-- net - *TCPListener* and *UnixListener* now implement -syscall.Conn-, to allow setting options on the underlying file descriptor using *syscall.RawConn.Control*
+- net - *TCPListener* and *UnixListener* now implement *syscall.Conn*, to allow setting options on the underlying file descriptor using *syscall.RawConn.Control*
 - net - the *Conn* implementations returned by *Pipe* now support setting read and write deadlines
 - net - the *IPConn.ReadMsgIP*, *IPConn.WriteMsgIP*, *UDPConn.ReadMsgUDP*, and *UDPConn.WriteMsgUDP*, methods are now implemented on *Windows*
 
